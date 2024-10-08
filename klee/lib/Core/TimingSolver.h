@@ -50,7 +50,7 @@ namespace klee {
     bool evaluate(const ExecutionState&, ref<Expr>, Solver::Validity &result);
 
     bool mustBeTrue(const ExecutionState&, ref<Expr>, bool &result);
-
+  
     bool mustBeFalse(const ExecutionState&, ref<Expr>, bool &result);
 
     bool mayBeTrue(const ExecutionState&, ref<Expr>, bool &result);

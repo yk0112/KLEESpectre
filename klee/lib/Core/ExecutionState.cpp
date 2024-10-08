@@ -87,6 +87,8 @@ ExecutionState::ExecutionState(KFunction *kf) :
     steppedInstructions(0),
     isSpeculative(false),
     specInstCount(0),
+    specBranchCount(0),
+    missBranch(0), 
     pSpecState(0)
 
 
@@ -148,6 +150,8 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     steppedInstructions(state.steppedInstructions),
     isSpeculative(state.isSpeculative),
     specInstCount(state.specInstCount),
+    specBranchCount(state.specBranchCount),
+    missBranch(state.missBranch), 
     pSpecState(0),
     cacheState(0)
 
@@ -201,6 +205,8 @@ ExecutionState::ExecutionState(const ExecutionState& state, bool ispec):
     steppedInstructions(state.steppedInstructions),
     isSpeculative(ispec),
     specInstCount(state.specInstCount),
+    specBranchCount(state.specBranchCount),
+    missBranch(state.missBranch), 
     pSpecState(0)
 
 {

@@ -86,6 +86,7 @@
 #include <string>
 #include <sys/mman.h>
 #include <vector>
+#include <iostream>
 
 using namespace llvm;
 using namespace klee;
@@ -137,9 +138,9 @@ cl::opt<bool> EmitAllErrors(
 
 /* SPSE options */
 
-cl::opt<bool> SpeculativeOrder("speculative-order",
-                cl::init(-1),
-                cl::desc("Specifying orders with speculative execution (default=-1)."),
+cl::opt<unsigned> SpeculativeOrder("speculative-order",
+                cl::init(0),
+                cl::desc("Specifying orders with speculative execution (default=0)."),
                 cl::cat(SpecCat));
 
 cl::opt<bool> EnableSpeculativeExecution(
@@ -958,6 +959,7 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
   solver->setTimeout(timeout);
   bool success = solver->evaluate(current, condition, res);
   solver->setTimeout(time::Span());
+
   if (!success) {
     current.pc = current.prevPC;
     terminateStateEarly(current, "Query timed out (fork).");
@@ -1059,28 +1061,35 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
   }
 
   if (res == Solver::True) {
+    
+  //  emitConstrainInfo(current, condition, "True");
     // klee_message("Solver: True: %d", current.tag);
     if (isInUserCode && !isInternal && ispecEnabled) {
-      ExecutionState *spTrueState = &current;
-      spTrueState = current.specBranch(maxSEW);
-      ++stats::spStates;
+      if (!SpeculativeOrder || (SpeculativeOrder && current.specBranchCount < SpeculativeOrder)) {
+        ExecutionState *spTrueState = &current;
+        spTrueState = current.specBranch(maxSEW);
 
-      if (current.isSpeculative) {
-        spTrueState->pPerentState = current.pPerentState;
-        current.pPerentState->addSpeState(spTrueState);
-      } else {
-        spTrueState->pPerentState = &current;
-        current.addSpeState(spTrueState);
-      }
-      current.pSpecState = spTrueState;
-      spTrueState->pTag = spTrueState->pPerentState->tag;
-      if (isa<ConstantExpr>(condition)) {
-        spectreRecorder.recordBR(current.prevPC->info, false);
-      } else {
-        spectreRecorder.recordBR(current.prevPC->info, true);
+        if (SpeculativeOrder) spTrueState->specBranchCount++;
+
+        ++stats::spStates;
+        spTrueState->missBranch.push_back(current.prevPC->info->line);
+
+        if (current.isSpeculative) {
+          spTrueState->pPerentState = current.pPerentState;
+          current.pPerentState->addSpeState(spTrueState);
+        } else {
+          spTrueState->pPerentState = &current;
+          current.addSpeState(spTrueState);
+        }
+        current.pSpecState = spTrueState;
+        spTrueState->pTag = spTrueState->pPerentState->tag;
+        if (isa<ConstantExpr>(condition)) {
+          spectreRecorder.recordBR(current.prevPC->info, false);
+        } else {
+          spectreRecorder.recordBR(current.prevPC->info, true);
+        }
       }
     }
-
     if (!isInternal) {
       if (pathWriter) {
         current.pathOS << "1";
@@ -1089,25 +1098,31 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
 
     return StatePair(&current, 0);
   } else if (res == Solver::False) {
+    //emitConstrainInfo(current, condition, "False");
     // klee_message("Solver: False: %d", current.tag);
     if (isInUserCode && !isInternal && ispecEnabled) {
-      ExecutionState *spFalseState = &current;
-      spFalseState = current.specBranch(maxSEW);
+      if (!SpeculativeOrder || (SpeculativeOrder && current.specBranchCount < SpeculativeOrder)) {
+        ExecutionState *spFalseState = &current;
+        spFalseState = current.specBranch(maxSEW);
 
-      ++stats::spStates;
+        if (SpeculativeOrder) spFalseState->specBranchCount++;
 
-      if (current.isSpeculative) {
-        spFalseState->pPerentState = current.pPerentState;
-        current.pPerentState->addSpeState(spFalseState);
-      } else {
-        spFalseState->pPerentState = &current;
-        current.addSpeState(spFalseState);
-      }
-      current.pSpecState = spFalseState;
-      if (isa<ConstantExpr>(condition)) {
-        spectreRecorder.recordBR(current.prevPC->info, false);
-      } else {
-        spectreRecorder.recordBR(current.prevPC->info, true);
+        ++stats::spStates;
+        spFalseState->missBranch.push_back(current.prevPC->info->line);
+
+        if (current.isSpeculative) {
+          spFalseState->pPerentState = current.pPerentState;
+          current.pPerentState->addSpeState(spFalseState);
+        } else {
+          spFalseState->pPerentState = &current;
+          current.addSpeState(spFalseState);
+        }
+        current.pSpecState = spFalseState;
+        if (isa<ConstantExpr>(condition)) {
+          spectreRecorder.recordBR(current.prevPC->info, false);
+        } else {
+          spectreRecorder.recordBR(current.prevPC->info, true);
+        }
       }
     }
 
@@ -1123,62 +1138,102 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
     ExecutionState *falseState, *trueState = &current;
     ExecutionState *spFalseState, *spTrueState = &current;
 
+    // emitConstrainInfo(current, condition, "Unknown");
     if (isInUserCode && !isInternal && ispecEnabled) {
-      ++stats::spStates;
-      ++stats::spStates;
-      if (!current.isSpeculative)
-        ++stats::forks;
-
-      if (isa<ConstantExpr>(condition)) {
-        spectreRecorder.recordBR(current.prevPC->info, false);
-      } else {
-        spectreRecorder.recordBR(current.prevPC->info, true);
-      }
-
-      falseState = trueState->branch();
-
-      addConstraint(*trueState, condition);
-      addConstraint(*falseState, Expr::createIsZero(condition));
-
-      spTrueState = trueState->specBranch(maxSEW);
-      spFalseState = falseState->specBranch(maxSEW);
-
-      if (current.isSpeculative) {
+      if (!SpeculativeOrder || (SpeculativeOrder && current.specBranchCount < SpeculativeOrder)) {
         ++stats::spStates;
-        trueState->pSpecState = spTrueState;
-        falseState->pSpecState = spFalseState;
+        ++stats::spStates;
 
-        ExecutionState *perentState = current.pPerentState;
 
-        spTrueState->pPerentState = perentState;
-        spFalseState->pPerentState = perentState;
-        falseState->pPerentState = perentState;
+        if (!current.isSpeculative)
+          ++stats::forks;
+        
+        
+        if (isa<ConstantExpr>(condition)) {
+          spectreRecorder.recordBR(current.prevPC->info, false);
+        } else {
+          spectreRecorder.recordBR(current.prevPC->info, true);
+        }
 
-        perentState->addSpeState(spTrueState);
-        perentState->addSpeState(spFalseState);
-        perentState->addSpeState(falseState);
+        falseState = trueState->branch();
 
-      } else {
-        addedStates.push_back(falseState);
+        addConstraint(*trueState, condition);
+        addConstraint(*falseState, Expr::createIsZero(condition));
 
-        current.ptreeNode->data = 0;
-        std::pair<PTree::Node *, PTree::Node *> res =
-            processTree->split(current.ptreeNode, falseState, trueState);
-        falseState->ptreeNode = res.first;
-        trueState->ptreeNode = res.second;
+        spTrueState = trueState->specBranch(maxSEW);
+        spFalseState = falseState->specBranch(maxSEW);
 
-        trueState->pSpecState = spTrueState;
-        falseState->pSpecState = spFalseState;
+        if (SpeculativeOrder) {
+          spFalseState->specBranchCount++;
+          spTrueState->specBranchCount++;
+        }
 
-        spTrueState->pPerentState = trueState;
-        spFalseState->pPerentState = falseState;
+        spFalseState->missBranch.push_back(current.prevPC->info->line);
+        spTrueState->missBranch.push_back(current.prevPC->info->line);
 
-        trueState->addSpeState(spTrueState);
-        falseState->addSpeState(spFalseState);
+        if (current.isSpeculative) {
+          ++stats::spStates;
+          trueState->pSpecState = spTrueState;
+          falseState->pSpecState = spFalseState;
+
+          ExecutionState *perentState = current.pPerentState;
+
+          spTrueState->pPerentState = perentState;
+          spFalseState->pPerentState = perentState;
+          falseState->pPerentState = perentState;
+
+          perentState->addSpeState(spTrueState);
+          perentState->addSpeState(spFalseState);
+          perentState->addSpeState(falseState);
+
+        } else {
+          addedStates.push_back(falseState);
+
+          current.ptreeNode->data = 0;
+          std::pair<PTree::Node *, PTree::Node *> res =
+              processTree->split(current.ptreeNode, falseState, trueState);
+          falseState->ptreeNode = res.first;
+          trueState->ptreeNode = res.second;
+
+          trueState->pSpecState = spTrueState;
+          falseState->pSpecState = spFalseState;
+
+          spTrueState->pPerentState = trueState;
+          spFalseState->pPerentState = falseState;
+
+          trueState->addSpeState(spTrueState);
+          falseState->addSpeState(spFalseState);
+        }
+        spTrueState->pTag = spTrueState->pPerentState->tag;
+        spFalseState->pTag = spFalseState->pPerentState->tag;
       }
-      spTrueState->pTag = spTrueState->pPerentState->tag;
-      spFalseState->pTag = spFalseState->pPerentState->tag;
+      else {
+        if (!current.isSpeculative)
+          ++stats::forks;
+        
+        falseState = trueState->branch();
 
+        addConstraint(*trueState, condition);
+        addConstraint(*falseState, Expr::createIsZero(condition));
+
+        if (current.isSpeculative) {
+          ++stats::spStates;
+          ExecutionState *perentState = current.pPerentState;
+          falseState->pPerentState = perentState;
+          perentState->addSpeState(falseState);
+        } 
+        // 投機的な状態ではないのにorderの上限を超える場合は無い
+        // else {
+        //   addedStates.push_back(falseState);
+        //
+        //   current.ptreeNode->data = 0;
+        //   std::pair<PTree::Node *, PTree::Node *> res =
+        //       processTree->split(current.ptreeNode, falseState, trueState);
+        //
+        //   falseState->ptreeNode = res.first;
+        //   trueState->ptreeNode = res.second;
+        // }
+      }
     } else {
       ++stats::forks;
       falseState = trueState->branch();
@@ -1797,6 +1852,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   }
 
   Instruction *i = ki->inst;
+
+  // std::ofstream debug_file;
+  // std::string file_name = "inst_file.txt";
+  // debug_file.open(file_name, std::ios::app);
+  // debug_file << "LINE: " << ki->info->line << " ,TYPE: " << llvm::Instruction::getOpcodeName(ki->inst->getOpcode()) << "\n";
+  // debug_file.close();
+
 
   /*
   klee_message("\n================================");
@@ -3171,11 +3233,40 @@ void Executor::doDumpStates() {
   updateStates(nullptr);
 }
 
-void Executor::emit_debuginfo() {
+void Executor::emitStateInfo() {
   std::ofstream debug_file;
-  std::string file_name = "debug_file.txt";
+  std::string file_name = "state_file.txt";
   debug_file.open(file_name, std::ios::out);
   debug_file << "STATE: " << stats::forks + 1 << " ,SPSTATE: " << stats::spStates << "\n";
+  debug_file.close();
+}
+
+void Executor::emitConstrainInfo(const ExecutionState &state, const ref<Expr> &condition, std::string comment) {
+  std::ofstream debug_file;
+  std::string file_name = "const_file.txt";
+  debug_file.open(file_name, std::ios::app);
+  std::string constraints;
+  std::string Str;
+  llvm::raw_string_ostream info(Str);
+  
+  Executor::getConstraintLog(state, constraints, Interpreter::KQUERY);
+  
+  debug_file << comment << "\n";
+  
+  debug_file << "LINE: " << state.prevPC->info->line << "\n";
+  debug_file << "MISS BRANCH: " << "\n";
+  for (int num : state.missBranch) {
+    debug_file << num << "\n";
+  }
+  
+  if (!condition.isNull()) {
+    ExprPPrinter::printSingleExpr(info, condition);
+    debug_file << "CONDITION: "<< "\n";
+    debug_file << info.str() << "\n";
+  }
+  debug_file << "CONSTRAINS: "<< "\n";
+  debug_file << constraints << "\n";
+  debug_file << "---------------------" << "\n";
   debug_file.close();
 }
 
@@ -3275,7 +3366,7 @@ void Executor::run(ExecutionState &initialState) {
     // else
     //     klee_message("States==: %d", es->tag);
     //}
-    Executor::emit_debuginfo();
+    Executor::emitStateInfo();
     ExecutionState &state = searcher->selectState();
 
     // if (state.isSpeculative)
@@ -4122,12 +4213,13 @@ void Executor::executeMemoryOperation(
   // llvm::errs() << "Check for overlapp, rl size: " << rl.size() <<"\n";
 
   bool isTouchingSecret = false;
-
+  
   for (ResolutionList::iterator i = rl.begin(), ie = rl.end(); i != ie; ++i) {
     const MemoryObject *mo = i->first;
     const ObjectState *os = i->second;
     ref<Expr> inBounds = mo->getBoundsCheckPointer(address, bytes);
 
+    
     if (state.isSpeculative) {
       std::string str;
       mo->getAllocInfo(str);
@@ -4136,7 +4228,7 @@ void Executor::executeMemoryOperation(
         isTouchingSecret = true;
         break;
       }
-      continue;
+       continue;
     }
 
     StatePair branches = fork(*unbound, inBounds, true);
@@ -4159,6 +4251,7 @@ void Executor::executeMemoryOperation(
     }
 
     unbound = branches.second;
+    
     if (!unbound)
       break;
   }
@@ -4168,12 +4261,14 @@ void Executor::executeMemoryOperation(
     return;
   }
 
-  if (state.isSpeculative && !isWrite) {
+  // 修正箇所
+  if (state.isSpeculative && !isWrite && !rl.empty()) {
     if (bytes != 1) {
       // llvm::errs() << "Bytes is not 1\n";
       terminateSpecState(state);
       return;
     }
+   // emitConstrainInfo(state);
     ref<Expr> result = createSensitiveValue(type);
     // llvm::errs() << "Create width: " << result->getWidth() << "\n";
     Expr *e = dyn_cast<Expr>(result);
@@ -4183,7 +4278,6 @@ void Executor::executeMemoryOperation(
     // klee_message("ERROR: Found leakage, touch secret: %d", isTouchingSecret);
     return;
   }
-
   // XXX should we distinguish out of bounds and overlapped cases?
   if (unbound) {
     if (incomplete) {

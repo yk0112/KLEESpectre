@@ -21,6 +21,7 @@
 #include "../../lib/Core/AddressSpace.h"
 #include "klee/Internal/Module/KInstIterator.h"
 
+#include <cstdint>
 #include <map>
 #include <set>
 #include <vector>
@@ -162,6 +163,11 @@ public:
 
   /// Count  the instrucitons in a speulative path
   int specInstCount;
+
+  //  Count miss speculative branch
+  uint64_t specBranchCount;
+
+  std::vector<int> missBranch;
 
   /// State tag 
   uint64_t tag;

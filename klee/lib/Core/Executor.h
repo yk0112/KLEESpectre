@@ -266,7 +266,8 @@ private:
                      llvm::raw_ostream &file);
 
   // for my debug
-  void emit_debuginfo();
+  void emitStateInfo();
+  void emitConstrainInfo(const ExecutionState &state, const ref<Expr> &condition=nullptr, std::string comment = "");
 
   void run(ExecutionState &initialState);
 
