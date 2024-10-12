@@ -6,7 +6,7 @@
 #include "klee/Internal/Support/ErrorHandling.h"
 #include "SpectreRecorder.h"
 #include "klee/Internal/System/Time.h"
-
+#include <iostream>
 
 using namespace llvm;
 using namespace klee;
@@ -31,7 +31,6 @@ void SpectreRecorder::recordBR(const InstructionInfo *temp, bool isUserControlle
                  tempRecord = it->second;
                  assert(tempRecord->br == br);
                  return;
-               
              } else if (tempRecord->rs.empty()){
                  tempRecord->br = br;
                  tempRecord->isUserControlled = isUserControlled;
@@ -51,13 +50,31 @@ void SpectreRecorder::recordBR(const InstructionInfo *temp, bool isUserControlle
     tempRecord->br = br;
 }
 
-void SpectreRecorder::recordRS(const InstructionInfo *temp, bool isConst, bool isSecret) {
+void SpectreRecorder::recordRS(const InstructionInfo *temp, const InstructionInfo *lastMissBranch, bool isConst, bool isSecret) {
     assert(tempRecord && tempRecord->br);
 
     InstructionInfo *rs = const_cast<InstructionInfo *>(temp);
+    InstructionInfo *lastbr= const_cast<InstructionInfo *>(lastMissBranch);
 
+    std::map<InstructionInfo*, SpectreRecord*>::iterator br_it;
     std::set<InstructionInfo *>::iterator it;
 
+    if (tempRecord->br != lastbr) {
+      br_it = recordObjects.find(lastbr);
+      
+      if (br_it != recordObjects.end()) {
+        tempRecord = br_it->second;
+      }
+      else if (tempRecord->rs.empty()) {
+        tempRecord->br = lastbr;
+      }
+      else {
+        tempRecord = new SpectreRecord();
+        tempRecord->br = lastbr;
+      }
+    }
+
+    assert(tempRecord->br == lastbr);
     it = tempRecord->ii.find(rs);
 
     if (it == tempRecord->ii.end()) {
@@ -73,7 +90,7 @@ void SpectreRecorder::recordRS(const InstructionInfo *temp, bool isConst, bool i
 
 }
 
-void SpectreRecorder::recordLS(const InstructionInfo *temp, enum LeakageKind lk, bool isConst) {
+void SpectreRecorder::recordLS(const InstructionInfo *temp, const InstructionInfo *lastMissBranch, enum LeakageKind lk, bool isConst) {
     assert(tempRecord && tempRecord->br);
 
     //if (tempRecord->ls.size() >= 100)
@@ -91,9 +108,27 @@ void SpectreRecorder::recordLS(const InstructionInfo *temp, enum LeakageKind lk,
     //klee_message("@SR: Found a new leakage: %s: %d, ASMLine: %d, time=%lu", temp->file.c_str(), temp->line, temp->assemblyLine, seconds);
 
     InstructionInfo *ls = const_cast<InstructionInfo *>(temp);
+    InstructionInfo *lastbr= const_cast<InstructionInfo *>(lastMissBranch);
 
     std::set<InstructionInfo*>::iterator it;
+    std::map<InstructionInfo*, SpectreRecord*>::iterator br_it;
 
+     if (tempRecord->br != lastbr) {
+      br_it = recordObjects.find(lastbr);
+      
+      if (br_it != recordObjects.end()) {
+        tempRecord = br_it->second;
+      }
+      else if (tempRecord->rs.empty()) {
+        tempRecord->br = lastbr;
+      }
+      else {
+        tempRecord = new SpectreRecord();
+        tempRecord->br = lastbr;
+      }
+    }
+
+    assert(tempRecord->br == lastbr);
     it = tempRecord->ls_cache.find(ls);
 
     if (it == tempRecord->ls_cache.end()) {

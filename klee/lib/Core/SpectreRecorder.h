@@ -48,8 +48,8 @@ public:
     SpectreRecorder(): tempRecord(0){}
 
     void recordBR(const InstructionInfo *br, bool isUserControlled);
-    void recordRS(const InstructionInfo *rs, bool isConst, bool isSecret);
-    void recordLS(const InstructionInfo *ls, enum LeakageKind lk, bool isConst);
+    void recordRS(const InstructionInfo *rs, const InstructionInfo *lastMissBranch, bool isConst, bool isSecret);
+    void recordLS(const InstructionInfo *ls, const InstructionInfo *lastMissBranch, enum LeakageKind lk, bool isConst);
     void recordCacheResult(const InstructionInfo *temp, bool isVul);
     void dump(llvm::raw_ostream &os);
 

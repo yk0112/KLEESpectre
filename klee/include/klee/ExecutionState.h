@@ -166,9 +166,9 @@ public:
 
   //  Count miss speculative branch
   uint64_t specBranchCount;
-
-  std::vector<int> missBranch;
-
+  
+  std::vector<const InstructionInfo*> missBranch;
+  
   /// State tag 
   uint64_t tag;
 

@@ -1062,17 +1062,17 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
 
   if (res == Solver::True) {
     
-  //  emitConstrainInfo(current, condition, "True");
     // klee_message("Solver: True: %d", current.tag);
     if (isInUserCode && !isInternal && ispecEnabled) {
       if (!SpeculativeOrder || (SpeculativeOrder && current.specBranchCount < SpeculativeOrder)) {
         ExecutionState *spTrueState = &current;
         spTrueState = current.specBranch(maxSEW);
 
+        // emitConstrainInfo(current, condition, "True");
         if (SpeculativeOrder) spTrueState->specBranchCount++;
 
         ++stats::spStates;
-        spTrueState->missBranch.push_back(current.prevPC->info->line);
+        spTrueState->missBranch.push_back(current.prevPC->info);
 
         if (current.isSpeculative) {
           spTrueState->pPerentState = current.pPerentState;
@@ -1098,17 +1098,17 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
 
     return StatePair(&current, 0);
   } else if (res == Solver::False) {
-    //emitConstrainInfo(current, condition, "False");
     // klee_message("Solver: False: %d", current.tag);
     if (isInUserCode && !isInternal && ispecEnabled) {
       if (!SpeculativeOrder || (SpeculativeOrder && current.specBranchCount < SpeculativeOrder)) {
         ExecutionState *spFalseState = &current;
         spFalseState = current.specBranch(maxSEW);
 
+        // emitConstrainInfo(current, condition, "False");
         if (SpeculativeOrder) spFalseState->specBranchCount++;
 
         ++stats::spStates;
-        spFalseState->missBranch.push_back(current.prevPC->info->line);
+        spFalseState->missBranch.push_back(current.prevPC->info);
 
         if (current.isSpeculative) {
           spFalseState->pPerentState = current.pPerentState;
@@ -1138,13 +1138,13 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
     ExecutionState *falseState, *trueState = &current;
     ExecutionState *spFalseState, *spTrueState = &current;
 
-    // emitConstrainInfo(current, condition, "Unknown");
     if (isInUserCode && !isInternal && ispecEnabled) {
       if (!SpeculativeOrder || (SpeculativeOrder && current.specBranchCount < SpeculativeOrder)) {
         ++stats::spStates;
         ++stats::spStates;
 
 
+        // emitConstrainInfo(current, condition, "Unknown");
         if (!current.isSpeculative)
           ++stats::forks;
         
@@ -1168,8 +1168,8 @@ Executor::StatePair Executor::fork(ExecutionState &current, ref<Expr> condition,
           spTrueState->specBranchCount++;
         }
 
-        spFalseState->missBranch.push_back(current.prevPC->info->line);
-        spTrueState->missBranch.push_back(current.prevPC->info->line);
+        spFalseState->missBranch.push_back(current.prevPC->info);
+        spTrueState->missBranch.push_back(current.prevPC->info);
 
         if (current.isSpeculative) {
           ++stats::spStates;
@@ -3255,8 +3255,8 @@ void Executor::emitConstrainInfo(const ExecutionState &state, const ref<Expr> &c
   
   debug_file << "LINE: " << state.prevPC->info->line << "\n";
   debug_file << "MISS BRANCH: " << "\n";
-  for (int num : state.missBranch) {
-    debug_file << num << "\n";
+  for (const InstructionInfo *temp : state.missBranch) {
+    debug_file << temp->line << "\n";
   }
   
   if (!condition.isNull()) {
@@ -4128,7 +4128,7 @@ void Executor::executeMemoryOperation(
     // Check for sensitive address
     if (state.isSpeculative) {
       if (address.get()->getSensitive()) {
-        spectreRecorder.recordLS(state.prevPC->info, LeakageKind::inExpression,
+        spectreRecorder.recordLS(state.prevPC->info, state.missBranch.back(), LeakageKind::inExpression,
                                  isConst);
       } else if (state.getSensitivity()) {
         // spectreRecorder.recordLS(state.prevPC->info,
@@ -4263,6 +4263,7 @@ void Executor::executeMemoryOperation(
 
   // 修正箇所
   if (state.isSpeculative && !isWrite && !rl.empty()) {
+    // emitConstrainInfo(state);
     if (bytes != 1) {
       // llvm::errs() << "Bytes is not 1\n";
       terminateSpecState(state);
@@ -4273,7 +4274,7 @@ void Executor::executeMemoryOperation(
     // llvm::errs() << "Create width: " << result->getWidth() << "\n";
     Expr *e = dyn_cast<Expr>(result);
     e->setSensitive();
-    spectreRecorder.recordRS(state.prevPC->info, isConst, isTouchingSecret);
+    spectreRecorder.recordRS(state.prevPC->info, state.missBranch.back(), isConst, isTouchingSecret);
     bindLocal(target, state, result);
     // klee_message("ERROR: Found leakage, touch secret: %d", isTouchingSecret);
     return;
@@ -4283,8 +4284,8 @@ void Executor::executeMemoryOperation(
     if (incomplete) {
       terminateStateEarly(*unbound, "Query timed out (resolve).");
     } else {
-      if (state.isSpeculative) {
-        spectreRecorder.recordRS(state.prevPC->info, isConst, false);
+      if (state.isSpeculative && !isWrite && !rl.empty()) {
+        spectreRecorder.recordRS(state.prevPC->info, state.missBranch.back(), isConst, false);
       }
       // klee_message("ERROR: memory error, out of bound pointer");
       terminateStateOnError(*unbound, "memory error: out of bound pointer", Ptr,
