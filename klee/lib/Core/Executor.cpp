@@ -4262,7 +4262,7 @@ void Executor::executeMemoryOperation(
   }
 
   // 修正箇所
-  if (state.isSpeculative && !isWrite && !rl.empty()) {
+  if (state.isSpeculative && !isWrite) {
     // emitConstrainInfo(state);
     if (bytes != 1) {
       // llvm::errs() << "Bytes is not 1\n";
@@ -4284,7 +4284,7 @@ void Executor::executeMemoryOperation(
     if (incomplete) {
       terminateStateEarly(*unbound, "Query timed out (resolve).");
     } else {
-      if (state.isSpeculative && !isWrite && !rl.empty()) {
+      if (state.isSpeculative) {
         spectreRecorder.recordRS(state.prevPC->info, state.missBranch.back(), isConst, false);
       }
       // klee_message("ERROR: memory error, out of bound pointer");

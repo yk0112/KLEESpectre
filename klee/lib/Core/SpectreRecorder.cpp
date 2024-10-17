@@ -59,22 +59,22 @@ void SpectreRecorder::recordRS(const InstructionInfo *temp, const InstructionInf
     std::map<InstructionInfo*, SpectreRecord*>::iterator br_it;
     std::set<InstructionInfo *>::iterator it;
 
-    if (tempRecord->br != lastbr) {
-      br_it = recordObjects.find(lastbr);
-      
-      if (br_it != recordObjects.end()) {
-        tempRecord = br_it->second;
-      }
-      else if (tempRecord->rs.empty()) {
-        tempRecord->br = lastbr;
-      }
-      else {
-        tempRecord = new SpectreRecord();
-        tempRecord->br = lastbr;
-      }
-    }
-
-    assert(tempRecord->br == lastbr);
+    // if (tempRecord->br != lastbr) {
+    //   br_it = recordObjects.find(lastbr);
+    //   
+    //   if (br_it != recordObjects.end()) {
+    //     tempRecord = br_it->second;
+    //   }
+    //   else if (tempRecord->rs.empty()) {
+    //     tempRecord->br = lastbr;
+    //   }
+    //   else {
+    //     tempRecord = new SpectreRecord();
+    //     tempRecord->br = lastbr;
+    //   }
+    // }
+    //
+    // assert(tempRecord->br == lastbr);
     it = tempRecord->ii.find(rs);
 
     if (it == tempRecord->ii.end()) {
@@ -113,22 +113,22 @@ void SpectreRecorder::recordLS(const InstructionInfo *temp, const InstructionInf
     std::set<InstructionInfo*>::iterator it;
     std::map<InstructionInfo*, SpectreRecord*>::iterator br_it;
 
-     if (tempRecord->br != lastbr) {
-      br_it = recordObjects.find(lastbr);
-      
-      if (br_it != recordObjects.end()) {
-        tempRecord = br_it->second;
-      }
-      else if (tempRecord->rs.empty()) {
-        tempRecord->br = lastbr;
-      }
-      else {
-        tempRecord = new SpectreRecord();
-        tempRecord->br = lastbr;
-      }
-    }
-
-    assert(tempRecord->br == lastbr);
+    //  if (tempRecord->br != lastbr) {
+    //   br_it = recordObjects.find(lastbr);
+    //   
+    //   if (br_it != recordObjects.end()) {
+    //     tempRecord = br_it->second;
+    //   }
+    //   else if (tempRecord->rs.empty()) {
+    //     tempRecord->br = lastbr;
+    //   }
+    //   else {
+    //     tempRecord = new SpectreRecord();
+    //     tempRecord->br = lastbr;
+    //   }
+    // }
+    //
+    // assert(tempRecord->br == lastbr);
     it = tempRecord->ls_cache.find(ls);
 
     if (it == tempRecord->ls_cache.end()) {
